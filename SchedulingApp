@@ -1,0 +1,353 @@
+/*
+ Michelle Delahoussaye
+ COP 2805 01Z
+ Team A 
+ */
+
+import java.util.*;
+import java.sql.*;
+//import SchedulingDBAPI class for the connection method
+
+public class SchedulingApp {
+	
+	private static Scanner input; 
+	private static Statement statement; 
+	private static ResultSet resultSet; 
+	private static ResultSetMetaData metaData;
+	private static PreparedStatement getAll;
+	private static PreparedStatement getField;
+	private static PreparedStatement addField;
+	private static PreparedStatement getCID;
+	private static Connection connection;
+	
+	//constructor establishes connection w/ the db and initializes prepared statements & scanner
+	SchedulingApp(){
+		
+		//(CHANGE CLASS/METHOD NAMES TO MATCH)
+		connection = SchedulingDBAPI.getConnection(); //uses SchedulingDatabaseAPI class' connection method to connect to DB 
+													  
+		getAll = connection.prepareStatement("SELECT * FROM ?");
+		getField = connection.prepareStatement("SELECT ? FROM ? WHERE Course = '?'");
+		addField = connection.prepareStatement("INSERT INTO ? (?) VALUES (?)"); //inserting the field this way assumes that it will overwrite existing data
+		getCID = connection.prepareStatement("SELECT Course FROM ? WHERE Course = '?'");
+	}
+	
+	public static void main(String[] args) {
+		int userContinue = 0;  //sentinel value for do-while loop
+		input = new Scanner(System.in);
+		
+		try 
+		{		
+			 do {
+				 operationsMenu(); //prompt user to choose their operation
+			
+				 //ask user if they want to perform another operation
+				 System.out.println("Do you want to perform another operation? Enter '1' to continue, or enter another value to stop");
+				 userContinue = input.nextInt();
+
+			 } while (userContinue == 1); //if user wants to continue, loop again
+		
+			 input.close(); 
+			 statement.close();
+			 connection.close();	
+		}
+		catch (Exception sqlException) 
+		{
+			sqlException.printStackTrace();
+		}
+	}//end main
+	
+	private static void operationsMenu() {
+
+		int userOperation = 0; //for operation selection (view all/view one/add)
+		int tblSelection = 0; //stores which table to work with
+		String tblName = ""; //name of table being worked with
+		
+		//prompt user to pick 1 of the 3 operations
+		System.out.println("Operations:\nTo DISPLAY ALL RECORDS for one of the tables, enter '1'");
+		System.out.println("To DISPLAY A FIELD from one of the tables, enter '2'");
+		System.out.println("To ADD A FIELD to one of the tables, enter '3'");
+		
+		//receive operation selection. if input is invalid, prompt again
+		do {
+			userOperation = input.nextInt();
+			
+			if (userOperation != 1 && userOperation != 2 && userOperation != 3)	
+				System.out.println("Selection must be an integer value between 1 and 3. Please try again");
+			
+		} while (userOperation != 1 && userOperation != 2 && userOperation != 3);
+			
+		//prompt user to pick a table. if input is invalid, prompt again
+		do {
+			System.out.println("Enter '1' to work with the Course table or '2' to work with the Campus Offerings table");
+			
+			tblSelection = input.nextInt();
+		
+			if (tblSelection != 1 && tblSelection != 2)
+				System.out.println("Selection must be an integer value of 1 or 2. Please try again");
+		
+		} while (tblSelection != 1 && tblSelection != 2);
+	
+		//set tblName to the name of corresponding table; value will be passed to the other functions
+		if (tblSelection == 1) 
+			tblName = "Course";	//CHANGE TO MATCH TABLE NAME
+		else					 
+			tblName = "Campus_Offerings"; // ^^^
+		
+		//use the initial selections to call the appropriate method
+		if (userOperation == 1)
+		{
+			displayAllRecords(tblName);
+		}
+		else if (userOperation == 2)
+		{
+			displayField(tblName);
+		}
+		else //if (userOperation == 3)
+		{
+			addField(tblName);
+		}
+	}//end operationsMenu
+	
+	//"Display all records in either database table"
+	private static void displayAllRecords(String tblName) {
+		int numColumns;
+		
+		try 
+		{
+			getAll.setString(1, tblName);		//set getAll stmnt for the appropriate table
+			resultSet = getAll.executeQuery();	//retrieve table info
+			metaData = resultSet.getMetaData();
+			
+			numColumns = metaData.getColumnCount();	//# of columns used in for loop 
+					
+			//display all records
+			System.out.println();
+			for (int i = 1; i <= numColumns; i++)
+			{
+				System.out.printf("%-8s\t", metaData.getColumnName(i));
+			}
+			System.out.println();
+			
+			while (resultSet.next()); //resultSet.next() returns a bool.and moves cursor fwd 1 row 
+			{
+				for (int i = 1; i <= numColumns; i++)
+				{
+					System.out.printf("%-8s\t", resultSet.getObject(i));
+				}
+				System.out.println();
+			}
+		}
+		catch (SQLException sqlException) 
+		{
+			sqlException.printStackTrace();
+		}
+	}
+	
+	//"Display any field from either table"
+	private static void displayField(String tblName) {
+
+		String courseID = "";
+		String columnName = "";
+
+		try 
+		{
+			courseID = getCourseID(tblName);  //get courseID of desired field from user, check input		
+			columnName = getColumnName(tblName);  //get columnName of desired field from user, check input
+			
+			//add appropriate variables to the prepared stmnt
+			getField.setString(1, columnName);
+			getField.setString(2, tblName);
+			getField.setString(3, courseID);
+			
+			//display field's value to user
+			resultSet = getField.executeQuery();
+			System.out.printf("\nThe value of the selected field is: %s", resultSet.getObject(1));
+		}
+		catch (SQLException sqlException) {
+			sqlException.printStackTrace();
+		}			
+	}
+	
+	//"Add any field to either table"
+	private static void addField(String tblName) {
+
+		String courseID = "";
+		String columnName = "";
+		String newFieldVal = "";
+		boolean validVal = false;
+		
+		try 
+		{
+			courseID = getCourseID(tblName);  //get courseID of desired field from user, check input		
+			columnName = getColumnName(tblName);  //get columnName of desired field from user, check input
+			
+			do {
+				System.out.printf("\nEnter the value you wish to insert for: %s %s", courseID, columnName);
+				newFieldVal = input.next();
+
+				//make string value uppercase to simplify value-checking
+				newFieldVal = newFieldVal.toUpperCase();
+
+				//change to correct tablenames below (if needed) / change how true/false is formatted (if needed)
+				//Locations should all have Boolean values
+				if (columnName == "Melbourne" || columnName == "PalmBay" || columnName == "Cocoa" || columnName == "Titusville"
+						|| columnName == "ELearning")
+				{
+					if (newFieldVal != "TRUE" && newFieldVal != "FALSE")
+						System.out.println("The value for this field must be TRUE or FALSE. Please try again.");
+					else
+						validVal = true;
+				}			
+				else if (columnName == "Course_ID" || columnName == "Course_Description")
+				{	
+					//input value is already in String format
+					validVal = true;
+				}
+				else if (columnName == "Credits" || columnName == "Contact_Hours") //can throw NumberFormatException
+				{
+					validVal = isNumber(newFieldVal);
+				}
+				else //all column names should be handled above. "else" in case something goes wrong
+				{
+					System.out.println("An issue has occurred. Please try again.");
+				}
+			} while (validVal != true);
+			
+			//modify prepared statements
+			addField.setString(1, tblName);
+			addField.setString(2, columnName);
+			addField.setString(3, newFieldVal);
+			
+			resultSet = addField.executeQuery();
+			System.out.println("Insertion successful!");
+		}
+		catch (SQLException sqlException) {
+			sqlException.printStackTrace();
+		}
+		
+	}//end "addField" method
+	
+	//called from addField method (Credits/Contact_Hours "if" block)
+	private static boolean isNumber(String userNum) {
+		try {
+			int i = Integer.parseInt(userNum);
+			//if parse is successful, 
+			return true;
+		}
+		catch (NumberFormatException numberFormatException) { 
+			//if parse throws an error
+			return false;
+		}
+	}
+	private static String getCourseID(String tblName) throws SQLException {
+		
+		String courseID = "";
+		boolean validID = false;
+		ResultSet courseResultSet; //used to check the input courseID
+		
+		do {
+			System.out.print("Enter the Course ID for the desired field.");
+			courseID = input.next();
+			
+			getCID.setString(1, tblName);
+			getCID.setString(2, courseID);
+			courseResultSet = getCID.executeQuery(); 
+
+			//check if the entered CourseID returns a result
+			if (courseResultSet.getObject(1) == courseID) 
+				validID = true;
+			else
+				System.out.println("The entered Course ID does not exist. Please check that the Course ID is correct and try again.");
+			
+		} while (validID == false);
+		
+		return courseID;
+	}//end getCourseID
+	
+	private static String getColumnName(String tblName) throws SQLException {
+		String columnName = "";
+		boolean validColumn = false;
+		
+		if (tblName == "Course") //ask user to select a valid column from Course table
+		{
+			do {
+				System.out.print("Enter one of the following:\n'CI' for the Course ID\n'CD' for the Course Description\n" +
+					"'CR' for the Credits\n'CH' for the Contact Hours");
+				
+				columnName = input.next();
+				columnName = columnName.toUpperCase(); //prepare input for switch stmnt
+			
+				//use user selection to select database column, validate input
+				switch (columnName)
+				{
+					case "CI":
+						columnName = "Course_ID"; //ADD THE TABLE COLUMN NAMES
+						validColumn = true;
+						break;
+					case "CD":
+						columnName = "Course_Description";
+						validColumn = true;
+						break;
+					case "CR":
+						columnName = "Credits";
+						validColumn = true;
+						break;
+					case "Contact_Hours":
+						columnName = "";
+						validColumn = true;
+						break;
+					default:
+						System.out.println("Invalid option. Please check your input and try again.");
+				}
+			} while (validColumn == false);
+		}
+		else  //ask user to select a valid column from Campus_Offerings table
+		{
+			do {
+          
+				System.out.print("Enter one of the following:\n'CI' for the Course ID\n'SI' for the Semester ID\n" +
+						"'PB' for Palm Bay\n'M' for Melbourne\n'C' for Cocoa\n'T' for Titusville\n'E' for E-Learning");
+		
+				columnName = input.next();
+				columnName = columnName.toUpperCase(); //prepare input for switch stmnt
+
+				//use user selection to select database column, validate input
+				switch (columnName)
+				{
+					case "CI":
+						columnName = "Course_ID"; //(FIX COLUMN NAMES TO MATCH THE DB)
+						validColumn = true;
+						break;
+					case "SI":
+						columnName = "Semester_ID";
+						validColumn = true;
+						break;
+					case "PB":
+						columnName = "PalmBay";
+						validColumn = true;
+						break;
+					case "M":
+						columnName = "Melbourne";
+						validColumn = true;
+						break;
+					case "C":
+						columnName = "Cocoa";
+						validColumn = true;
+						break;
+					case "T":
+						columnName = "Titusville";
+						validColumn = true;
+						break;
+					case "E":
+						columnName = "ELearning";
+						validColumn = true;
+						break;
+					default:
+						System.out.println("Invalid option. Please check your input and try again.");
+				}
+			} while (validColumn == false);
+		}
+		return columnName;
+	}//end getColumnName
+}//end class
