@@ -20,7 +20,7 @@ public class SchedulingApp {
 	private static PreparedStatement getCID;
 	private static Connection connection;
 	
-	//constructor establishes connection w/ the db and initializes prepared statements & scanner
+	//constructor establishes connection w/ the db and initializes prepared statements
 	SchedulingApp(){
 		
 		//(CHANGE CLASS/METHOD NAMES TO MATCH)
